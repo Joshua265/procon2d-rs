@@ -85,8 +85,8 @@ struct State { buttons: u32, lx: i16, ly: i16, rx: i16, ry: i16 }
 
 // bit masks – identical to the Linux driver constants
 mod bit {
-    pub const B:        u32 = 1 << 0;   // 0x0000_0001
-    pub const A:        u32 = 1 << 1;   // 0x0000_0002
+    pub const A:        u32 = 1 << 0;   // 0x0000_0001
+    pub const B:        u32 = 1 << 1;   // 0x0000_0002
     pub const Y:        u32 = 1 << 2;   // 0x0000_0004
     pub const X:        u32 = 1 << 3;   // 0x0000_0008
     pub const R:        u32 = 1 << 4;   // 0x0000_0010
@@ -352,25 +352,32 @@ fn decode_sticks(src: &[u8], st: &mut State) {
 fn main() -> Result<()> {
     env_logger::init();
 
-    if let Err(e) = run_handshake() {
-        eprintln!("[error] USB init failed: {e}");
-    }
-
-    let hid = open_hid()?;
-    let mut mapper = Mapper::new()?;
-    let mut buf = [0u8; 64];
-
     loop {
-        match hid.read_timeout(&mut buf, 20) {
-            Ok(n) if n > 0 => {
-                if let Some(state) = parse_report(&buf[..n]) {
-                    if let Err(e) = mapper.emit(state) {
-                        eprintln!("[uinput] emit error: {e}");
+        if let Err(e) = run_handshake() {
+            eprintln!("[error] USB init failed: {e}");
+            thread::sleep(std::time::Duration::new(5, 0));
+            continue;
+        }
+
+        let hid = open_hid()?;
+        let mut mapper = Mapper::new()?;
+        let mut buf = [0u8; 64];
+
+        loop {
+            match hid.read_timeout(&mut buf, 20) {
+                Ok(n) if n > 0 => {
+                    if let Some(state) = parse_report(&buf[..n]) {
+                        if let Err(e) = mapper.emit(state) {
+                            eprintln!("[uinput] emit error: {e}");
+                        }
                     }
                 }
+                Ok(_) => { /* timeout – nothing */ }
+                Err(e) => {
+                    eprintln!("[hid] read error: {e}");
+                    break;
+                }
             }
-            Ok(_) => { /* timeout – nothing */ }
-            Err(e) => eprintln!("[hid] read error: {e}"),
         }
     }
 }
