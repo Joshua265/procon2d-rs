@@ -33,18 +33,6 @@
         nativeBuildInputs = [pkgs.pkg-config];
         buildInputs = [pkgs.libusb1 pkgs.hidapi];
 
-        postInstall = ''
-          # Ship a udev rule file inside the package so NixOS can pick it up via services.udev.packages.
-          # Use a priority < 99 so TAG+="uaccess" applies early enough.
-          mkdir -p $out/lib/udev/rules.d
-          cat > $out/lib/udev/rules.d/60-${pname}.rules <<'EOF'
-          # Nintendo Pro Controller 2 (example IDs from your original rule)
-          ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="057e", ATTR{idProduct}=="2069", \
-            TAG+="uaccess", GROUP="input", \
-            TAG+="systemd", ENV{SYSTEMD_WANTS}+="${pname}.service"
-          EOF
-        '';
-
         meta = with pkgs.lib; {
           description = "Daemon that enables Nintendo Pro Controller 2 on Linux via libusb + uinput";
           homepage = "https://github.com/Joshua265/procon2-daemon";
@@ -90,6 +78,15 @@
         system = pkgs.stdenv.hostPlatform.system;
         defaultPkg =
           self.packages.${system}.${pname} or self.packages.${system}.default;
+        udevRulesPkg = pkgs.writeTextFile {
+          name = "${pname}-udev-rules";
+          destination = "/lib/udev/rules.d/60-${pname}.rules";
+          text = ''
+            ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="057e", ATTR{idProduct}=="2069", \
+              MODE="0660", GROUP="procon2d", \
+              TAG+="systemd", ENV{SYSTEMD_WANTS}+="${pname}.service"
+          '';
+        };
       in {
         options.services.${pname} = {
           enable = lib.mkEnableOption "Pro Controller 2 daemon";
@@ -118,29 +115,32 @@
           # Ensure uinput exists (module on many kernels)
           boot.kernelModules = ["uinput"];
 
-          # Pull in udev rules shipped at $pkg/lib/udev/rules.d
-          services.udev.packages = lib.mkIf cfg.enableUdevRules [cfg.package];
+          services.udev.packages = [udevRulesPkg];
+
+          users.groups.procon2d = {};
+          users.users.procon2d = {
+            isSystemUser = true;
+            group = "procon2d";
+            extraGroups = ["input"]; # for /dev/uinput which is commonly root:input
+          };
 
           systemd.services.${pname} = {
             description = "Pro Controller 2 driver (USB handshake + uinput translator)";
             wantedBy = ["multi-user.target"];
             after = ["systemd-udev-settle.service"];
-            # If your daemon depends on networking, add:
-            # after = [ "network-online.target" ];
-            # wants = [ "network-online.target" ];
 
             serviceConfig = {
               ExecStart = "${cfg.package}/bin/${pname} ${lib.escapeShellArgs cfg.extraArgs}";
               Restart = "on-failure";
               RestartSec = 1;
 
-              # Likely needed for raw USB access; adjust based on what the daemon actually does.
               CapabilityBoundingSet = ["CAP_SYS_RAWIO"];
               AmbientCapabilities = ["CAP_SYS_RAWIO"];
               NoNewPrivileges = true;
 
-              # Run with a dynamic user, but allow access to /dev/uinput (typically group "input")
-              DynamicUser = true;
+              DynamicUser = false;
+              User = "procon2d";
+              Group = "procon2d";
               SupplementaryGroups = ["input"];
 
               # Nice defaults
