@@ -12,7 +12,7 @@ Run the Nintendo **Pro Controller 2 (PID 0x2069)** on Linux without patching the
 ## Build & run (any distro)
 
 ```bash
-git clone https://github.com/Joshua265/procon2-daemon
+git clone https://github.com/Joshua265/procon2d-rs.git
 cargo r --release          # sudo or setcap cap_sys_rawio
 ```
 
@@ -25,7 +25,7 @@ Open `evtest` – pick **ProCon2 (virt)**. Sticks = ±32 767, buttons light up.
 Build + run once (no installation):
 
 ```bash
-nix run github:Joshua265/procon2-daemon
+nix run github:Joshua265/procon2d-rs
 ```
 
 ---
@@ -46,22 +46,21 @@ Add the input and module, then enable the service:
 {
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    procon2d.url = "github:Joshua265/procon2-daemon";
+    procon2d-rs.url = "github:Joshua265/procon2d-rs";
   };
 
   outputs = { self, nixpkgs, procon2d, ... }: {
     nixosConfigurations.myhost = nixpkgs.lib.nixosSystem {
       system = "x86_64-linux";
       modules = [
-        procon2d.nixosModules.default
+        procon2d-rs.nixosModules.default
 
         ({ ... }: {
-          # NOTE: option name contains '-', so it must be quoted
-          services."procon2d-rs".enable = true;
+          services.procon2d-rs.enable = true;
+          services.procon2d-rs.enableUdevRules = true;
 
           # optional
-          # services."procon2d-rs".extraArgs = [ "--grab" ];
-          # services."procon2d-rs".enableUdevRules = true;
+          # services.procon2d-rs.extraArgs = [ "--grab" ];
         })
       ];
     };

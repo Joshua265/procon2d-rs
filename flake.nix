@@ -94,8 +94,11 @@
         options.services.${pname} = {
           enable = lib.mkEnableOption "Pro Controller 2 daemon";
 
-          package = lib.mkPackageOption pkgs pname {
+          package = lib.mkOption {
+            type = lib.types.package;
             default = defaultPkg;
+            defaultText = lib.literalExpression "inputs.procon2d.packages.${pkgs.stdenv.hostPlatform.system}.default";
+            description = "Package that provides ${pname}.";
           };
 
           extraArgs = lib.mkOption {
@@ -104,8 +107,6 @@
             description = "Extra CLI args for the daemon.";
           };
 
-          # Keep this true if you want the udev rules from the package to be installed.
-          # (Rule also includes SYSTEMD_WANTS to start the service on plug-in.)
           enableUdevRules = lib.mkOption {
             type = lib.types.bool;
             default = true;
