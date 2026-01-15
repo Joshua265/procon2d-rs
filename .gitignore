@@ -94,11 +94,5 @@ tests/rustdoc-gui/src/**.lock
 /.envrc
 /.direnv/
 
-## nix
-/flake.nix
-flake.lock
-/default.nix
-result
 
-## vscode
-/.vscode
+result
