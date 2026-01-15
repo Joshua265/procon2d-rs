@@ -1,10 +1,11 @@
-# ProCon2‑Daemon
+# ProCon2-Daemon
 
-Run the Nintendo **Pro Controller 2 (PID 0x2069)** on Linux without patching the kernel.
+Run the Nintendo **Pro Controller 2 (PID 0x2069)** on Linux without patching the kernel.
 
 - 🔌 USB handshake → unlocks HID mode
-- 🎮 Translates to a single **uinput** game‑pad (ABS axes + buttons)
-- 🧊 Ships a Nix flake (`nix run .#procon2-daemon`)
+- 🎮 Translates to a single **uinput** game-pad (ABS axes + buttons)
+- 🧊 Ships a Nix flake (`nix run .`)
+- 🛠️ Ships a **NixOS module** that installs udev rules + runs a **systemd service**
 
 ---
 
@@ -15,18 +16,70 @@ git clone https://github.com/Joshua265/procon2-daemon
 cargo r --release          # sudo or setcap cap_sys_rawio
 ```
 
-Open `evtest` – pick **ProCon2 (virt)**. Sticks = ±32 767, buttons light up.
+Open `evtest` – pick **ProCon2 (virt)**. Sticks = ±32 767, buttons light up.
 
-### NixOS (one‑liner)
+---
+
+## Nix (one-shot run)
+
+Build + run once (no installation):
 
 ```bash
-nix run github:Joshua265/procon2-daemon       # builds + runs
+nix run github:Joshua265/procon2-daemon
 ```
 
-Add to `configuration.nix` for auto‑start:
+---
+
+## NixOS (module + systemd service)
+
+This flake exports a NixOS module that:
+
+- installs the packaged udev rule (permissions + optional start-on-plug)
+- defines a **system** unit `procon2d-rs.service`
+
+### Flake-based NixOS config
+
+Add the input and module, then enable the service:
 
 ```nix
-services.procon2.enable = true;
+# flake.nix (host)
+{
+  inputs = {
+    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    procon2d.url = "github:Joshua265/procon2-daemon";
+  };
+
+  outputs = { self, nixpkgs, procon2d, ... }: {
+    nixosConfigurations.myhost = nixpkgs.lib.nixosSystem {
+      system = "x86_64-linux";
+      modules = [
+        procon2d.nixosModules.default
+
+        ({ ... }: {
+          # NOTE: option name contains '-', so it must be quoted
+          services."procon2d-rs".enable = true;
+
+          # optional
+          # services."procon2d-rs".extraArgs = [ "--grab" ];
+          # services."procon2d-rs".enableUdevRules = true;
+        })
+      ];
+    };
+  };
+}
+```
+
+Apply:
+
+```bash
+sudo nixos-rebuild switch --flake .#myhost
+```
+
+Check status/logs:
+
+```bash
+systemctl status procon2d-rs.service
+journalctl -u procon2d-rs.service -f
 ```
 
 ---
@@ -36,6 +89,7 @@ services.procon2.enable = true;
 Steam ≥2024 has no UI toggle for wired Nintendo pads, but you can blacklist it.
 
 1. Exit Steam.
+
 2. Edit `~/.steam/steam/config/config.vdf` and add:
 
    ```
@@ -44,12 +98,11 @@ Steam ≥2024 has no UI toggle for wired Nintendo pads, but you can blacklist it
 
 3. Save & restart Steam – only **ProCon2 (virt)** appears.
 
-_(The daemon can also grab evdev for you; see \***\*`--grab`\*\*** flag.)_
+_(The daemon can also grab evdev for you; see **`--grab`** flag.)_
 
 ---
 
-## Roadmap
+## Limitations
 
-- Bluetooth pairing helper (USB → BlueZ)
-
-PRs welcome! 🎉
+- Only tested on USB; Bluetooth not supported.
+- L3/R3 buttons not mapped.
