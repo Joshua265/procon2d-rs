@@ -82,9 +82,16 @@
           name = "${pname}-udev-rules";
           destination = "/lib/udev/rules.d/60-${pname}.rules";
           text = ''
-            ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="057e", ATTR{idProduct}=="2069", \
+            # libusb opens /dev/bus/usb/BBB/DDD (usbfs). Ensure write access.
+            ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", \
+              ATTR{idVendor}=="057e", ATTR{idProduct}=="2069", \
               MODE="0660", GROUP="procon2d", \
               TAG+="systemd", ENV{SYSTEMD_WANTS}+="${pname}.service"
+
+            # hidapi opens /dev/hidrawN. Match via parent attributes.
+            ACTION=="add", SUBSYSTEM=="hidraw", KERNEL=="hidraw*", \
+              ATTRS{idVendor}=="057e", ATTRS{idProduct}=="2069", \
+              MODE="0660", GROUP="procon2d"
           '';
         };
       in {
