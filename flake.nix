@@ -92,6 +92,9 @@
             ACTION=="add", SUBSYSTEM=="hidraw", KERNEL=="hidraw*", \
               ATTRS{idVendor}=="057e", ATTRS{idProduct}=="2069", \
               MODE="0660", GROUP="procon2d"
+
+            # uinput: ensure the input group can write to it (for virtual device creation)
+            KERNEL=="uinput", MODE="0660", GROUP="input", OPTIONS+="static_node=uinput"
           '';
         };
       in {

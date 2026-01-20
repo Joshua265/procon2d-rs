@@ -104,4 +104,4 @@ _(The daemon can also grab evdev for you; see **`--grab`** flag.)_
 ## Limitations
 
 - Only tested on USB; Bluetooth not supported.
-- L3/R3 buttons not mapped.
+- GL/GR buttons not mapped.

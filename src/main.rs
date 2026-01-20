@@ -336,10 +336,13 @@ fn decode_sticks(src: &[u8], st: &mut State) {
     let ry_raw = (((src[4] as u16) >> 4) |  ((src[5] as u16) << 4))  as i32;
 
     let map = |v: i32| {
-        let c = v - 2048;                      // centre
+        let c = v - 2048;
         if c.abs() < 200 { 0 }
-        else { ((c * 32767) / 2048)
-               .clamp(-32767, 32767) as i16 }
+        else {
+            // Scale from deadzone (200) to typical max throw (~1800)
+            let val = (c.abs() - 200) * 32767 / (1800 - 200);
+            (val * c.signum()).clamp(-32767, 32767) as i16
+        }
     };
 
     st.lx =  map(lx_raw);
@@ -353,31 +356,41 @@ fn main() -> Result<()> {
     env_logger::init();
 
     loop {
-        if let Err(e) = run_handshake() {
-            eprintln!("[error] USB init failed: {e}");
-            thread::sleep(std::time::Duration::new(5, 0));
-            continue;
-        }
+        // We wrap the inner logic in a closure or block to capture Result violations
+        // without crashing the whole service.
+        let result: Result<()> = (|| {
+             run_handshake()?;
+             let hid = open_hid()?;
+             let mut mapper = Mapper::new()?;
+             let mut buf = [0u8; 64];
 
-        let hid = open_hid()?;
-        let mut mapper = Mapper::new()?;
-        let mut buf = [0u8; 64];
-
-        loop {
-            match hid.read_timeout(&mut buf, 20) {
-                Ok(n) if n > 0 => {
-                    if let Some(state) = parse_report(&buf[..n]) {
-                        if let Err(e) = mapper.emit(state) {
-                            eprintln!("[uinput] emit error: {e}");
+             loop {
+                match hid.read_timeout(&mut buf, 20) {
+                    Ok(n) if n > 0 => {
+                        if let Some(state) = parse_report(&buf[..n]) {
+                            // If emitting to uinput fails (e.g. device permissions or closed),
+                            // we probably want to restart the whole cycle or at least log it.
+                            // For now, let's treat emission errors as non-fatal to the HID loop
+                            // unless they persist, but if uinput is gone, we likely need to recreate it.
+                             if let Err(e) = mapper.emit(state) {
+                                eprintln!("[uinput] emit error: {e}");
+                                // If uinput is broken, maybe we should break outer loop?
+                                // For now, keep existing behavior of just logging,
+                                // or if you prefer strictness: bail!("uinput error: {e}");
+                            }
                         }
                     }
+                    Ok(_) => { /* timeout – nothing */ }
+                    Err(e) => {
+                         bail!("read error: {e}");
+                    }
                 }
-                Ok(_) => { /* timeout – nothing */ }
-                Err(e) => {
-                    eprintln!("[hid] read error: {e}");
-                    break;
-                }
-            }
+             }
+        })();
+
+        if let Err(e) = result {
+            eprintln!("[error] {e}");
+            thread::sleep(Duration::from_secs(5));
         }
     }
 }
